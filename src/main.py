@@ -12,12 +12,9 @@ from numba import  jit
 class Foreground:
     def __init__(self, mode):
         self.background = None
-
         if mode == 1:
-
             self.backSub = cv2.createBackgroundSubtractorMOG2(detectShadows = False)
         elif mode == 2:
-
             self.backSub = cv2.createBackgroundSubtractorKNN(detectShadows = False)
             # print(self.backSub.getShadowValue())
         elif mode == 3:
@@ -47,7 +44,8 @@ class KnnRemove:
     def train(self):
         self.model = KNeighborsClassifier()
         derc = self.object.tolist()
-        derc.extend(self.shadow.tolist())
+        derc.extend(self.shadow)
+ 
         label = [0]*len(self.object)
         label.extend([1]*len(self.shadow))
         self.model.fit(derc, label)
@@ -62,6 +60,7 @@ class KnnRemove:
                     result[y, x] = 255
                 else:
                     result[y, x] = 0
+        result = cv2.morphologyEx(result, cv2.MORPH_OPEN, kernel)  
         return result
 
 class Classfier:
@@ -148,6 +147,27 @@ def regTest(fg_contours, fg_mask, frame, feature):
             cv2.waitKey(0)
             # cv2.destroyWindow("after")
             cv2.destroyAllWindows()
+def on_mouse(event, x, y, flags):
+    img2 = img.copy()
+
+    if event == cv2.EVENT_LBUTTONDOWN:  # 左键点击
+        point1 = (x, y)
+        cv2.circle(img2, point1, 10, (0, 255, 0), 2)
+        cv2.imshow('image', img2)
+    elif event == cv2.EVENT_MOUSEMOVE and (flags & cv2.EVENT_FLAG_LBUTTON):  # 按住左键拖曳
+        cv2.rectangle(img2, point1, (x, y), (255, 0, 0), 2)
+        cv2.imshow('image', img2)
+    elif event == cv2.EVENT_LBUTTONUP:  # 左键释放
+        point2 = (x, y)
+        cv2.rectangle(img2, point1, point2, (0, 0, 255), 2)
+        cv2.imshow('image', img2)
+        min_x = min(point1[0], point2[0])
+        min_y = min(point1[1], point2[1])
+        width = abs(point1[0] - point2[0])
+        height = abs(point1[1] - point2[1])
+        cut_img1 = img[min_y:min_y + height, min_x:min_x + width]
+        # cv2.imwrite('imgs/Area1.jpg', cut_img1)
+
 if __name__ =='__main__':
     import time
     import json
@@ -155,7 +175,7 @@ if __name__ =='__main__':
     # classfier = Classfier()
     # path ="video/2023-06-03_12-58.mp4" 
     sample={"object":[],"shadow":[]}
-    path ="video/441k901_2022-05-24_23-00" 
+    path ="video/rain" 
     cap = cv2.VideoCapture(path+".mp4")
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     # print(frame_count)
@@ -172,7 +192,36 @@ if __name__ =='__main__':
     developer = True
     pre_frame_result = None
     remove_high_light = False 
-    
+    point1 = None
+    point2 = None
+    cut_img1 = None
+    draw_img = None
+
+
+    shadow_feature = None
+    shadow_data = []
+    def on_mouse(event, x, y, flags, param):
+        global draw_img, point1, point2, cut_img1, shadow_feature
+        img2 = draw_img.copy()
+
+        if event == cv2.EVENT_LBUTTONDOWN:  # 左键点击
+            point1 = (x, y)
+            cv2.circle(img2, point1, 10, (0, 255, 0), 2)
+            cv2.imshow('image', img2)
+        elif event == cv2.EVENT_MOUSEMOVE and (flags & cv2.EVENT_FLAG_LBUTTON):  # 按住左键拖曳
+            cv2.rectangle(img2, point1, (x, y), (255, 0, 0), 2)
+            cv2.imshow('image', img2)
+        elif event == cv2.EVENT_LBUTTONUP:  # 左键释放
+            point2 = (x, y)
+            cv2.rectangle(img2, point1, point2, (0, 0, 255), 2)
+            cv2.imshow('image', img2)
+            min_x = min(point1[0], point2[0])
+            min_y = min(point1[1], point2[1])
+            width = abs(point1[0] - point2[0])
+            height = abs(point1[1] - point2[1])
+            shadow_feature = draw_img[min_y:min_y + height, min_x:min_x + width]
+            # shadow_feature = np.reshape(cut_img1, (-1,1))
+            # cv2.imwrite('imgs/Area1.jpg', cut_img1)
     def keyboardTool():
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
@@ -191,6 +240,23 @@ if __name__ =='__main__':
             return True
 #---------------------------------------------------------------------------------------------
     try:
+        ret, draw_img = cap.read()
+        draw_img = cv2.resize(draw_img, (480,270))
+        cv2.namedWindow('image')
+        cv2.setMouseCallback('image', on_mouse)
+        cv2.imshow('image', draw_img)
+        cv2.waitKey(0)
+        print(cut_img1)
+        height, width, channels = shadow_feature.shape
+
+    # 迭代圖像的每個像素
+        for y in range(height):
+            for x in range(width):
+                # 獲取像素的RGB值
+                b, g, r = draw_img[y, x]
+
+                # 將RGB值添加到列表中
+                shadow_data.append([b, g, r])
         while(ret):
             ret, frame = cap.read()
             frame = cv2.resize(frame, (480,270))
@@ -216,22 +282,24 @@ if __name__ =='__main__':
                     continue
 
                 if contour_size >400:
+
                     knn = KnnRemove()                    
                     x, y, w, h = cv2.boundingRect(cnt)
                     img = frame[y:h+y, x:x+w]
-                    # mask = np.zeros((img.shape[0],img.shape[1]))
                     mask = fg_mask[y:h+y, x:x+w]
-                    cv2.drawContours(mask, cnt, -1, 255, 3)
-                    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-                    object_mask = cv2.erode(mask, kernel, iterations = 1)
-                    shadow_mask = cv2.dilate(mask, kernel, iterations = 1)
-                    knn.setObject(img[object_mask == 255])
-                    knn.setShadow(img[shadow_mask == 0])
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    dst = cv2.cornerHarris(gray, blockSize=3, ksize=3, k=0.04)
+                    harris_mask = np.zeros_like(mask, dtype=np.uint8) 
+                    harris_mask[dst > 0.01 * dst.max()] = 255
+                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                    harris_mask = cv2.dilate(harris_mask, kernel, iterations=2)   
+                    knn.setObject(img[harris_mask==255])
+                    knn.setShadow(shadow_data)
                     knn.train()
-                    result = knn.predict(img)
-                    result = cv2.dilate(result, kernel, iterations = 1)
-                    draw[y:h+y, x:x+w] = result
-            
+                    res = knn.predict(img)
+                    # res = cv2.erode(harris_mask, kernel, iterations=2)   
+
+                    draw[y:h+y, x:x+w] = res
             cv2.imshow('draw',draw)
             # try:
             #     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
