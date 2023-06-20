@@ -7,6 +7,7 @@ import package
 import numpy as np
 from collections import Counter
 import matplotlib.pyplot as plt
+from sklearn.neighbors import KNeighborsClassifier
 from numba import  jit
 class Foreground:
     def __init__(self, mode):
@@ -17,7 +18,7 @@ class Foreground:
             self.backSub = cv2.createBackgroundSubtractorMOG2(detectShadows = False)
         elif mode == 2:
 
-            self.backSub = cv2.createBackgroundSubtractorKNN(detectShadows = True)
+            self.backSub = cv2.createBackgroundSubtractorKNN(detectShadows = False)
             # print(self.backSub.getShadowValue())
         elif mode == 3:
             self.backSub = cv2.bgsegm.createBackgroundSubtractorMOG()
@@ -38,14 +39,29 @@ class KnnRemove:
     def __init__(self):
         self.object = None
         self.shadow = None
-    def setObject(self, src):
-        self.object = src
+        self.model  = None
+    def setObject(self, object):
+        self.object = object
     def setShadow(self, shadow):
         self.shadow = shadow
     def train(self):
-        return
+        self.model = KNeighborsClassifier()
+        derc = self.object.tolist()
+        derc.extend(self.shadow.tolist())
+        label = [0]*len(self.object)
+        label.extend([1]*len(self.shadow))
+        self.model.fit(derc, label)
+
     def predict(self, img):
-        result = img
+        result = np.zeros((img.shape[0],img.shape[1]), dtype=np.uint8)
+        height, width = result.shape
+        for y in range(height):
+            for x in range(width):
+                b, g, r = img[y, x]
+                if self.model.predict([[b, g, r]]) == 0:
+                    result[y, x] = 255
+                else:
+                    result[y, x] = 0
         return result
 
 class Classfier:
@@ -136,10 +152,10 @@ if __name__ =='__main__':
     import time
     import json
     import matplotlib.pyplot as plt
-    classfier = Classfier()
+    # classfier = Classfier()
     # path ="video/2023-06-03_12-58.mp4" 
     sample={"object":[],"shadow":[]}
-    path ="video/rain" 
+    path ="video/441k901_2022-05-24_23-00" 
     cap = cv2.VideoCapture(path+".mp4")
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     # print(frame_count)
@@ -147,7 +163,7 @@ if __name__ =='__main__':
     # background = Foreground()
     fg = Foreground(mode=2)
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter(path+'-output.mp4', cv2.VideoWriter_fourcc(*"mp4v"), 30, (960,  540))
+    out = cv2.VideoWriter(path+'-output.mp4', cv2.VideoWriter_fourcc(*"mp4v"), 30, (480,270))
     bg = fg.getBackground()
     draw = None
     ret = True
@@ -172,76 +188,8 @@ if __name__ =='__main__':
                     if key == ord('s'):
                         stop = False
                         return True
-            
-            if key == ord('w'):
-                shadow = np.zeros_like(fg_mask)
-                obj = np.zeros_like(fg_mask)
-                shadow[fg_mask==127]=255
-                obj[fg_mask==255]=255
-                cv2.imshow("shadow", shadow)
-                cv2.imshow("obj", obj)
-                stop =True
-
-                while stop:
-                    key = cv2.waitKey(1) & 0xFF
-                    if key == ord('w'):
-                        stop = False
-                        return True
-                    if key == ord('y'):
-                        shadow_contours  = cv2.findContours(shadow, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)[-2]
-                        obj_contours  = cv2.findContours(obj, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)[-2]
-                        for shadow_cnt in shadow_contours:
-                            x, y, w, h = cv2.boundingRect(shadow_cnt)
-                            src = frame[y:y+h,x:x+w]
-                            for i in range(0,3):
-                                px = random.randrange(0,w,10)
-                                py = random.randrange(0,h,10)
-                                b,g,r = frame[px][py]
-                                sample["shadow"].append([int(b),int(g),int(r)])
-                        for obj_cnt in obj_contours:
-                            x, y, w, h = cv2.boundingRect(obj_cnt)
-                            src = frame[y:y+h,x:x+w]
-                            for i in range(0,3):
-                                px = random.randrange(0,w,10)
-                                py = random.randrange(0,h,10)
-                                b,g,r = frame[px][py]
-                                sample["object"].append([int(b),int(g),int(r)])
-                        stop = False
-                        return True
-                    if key == ord('x'):
-                        # fig = plt.figure()
-                        # axmode = fig.gca(projection='3d')
-                        shadow_contours  = cv2.findContours(shadow, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)[-2]
-                        obj_contours  = cv2.findContours(obj, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)[-2]
-                        for shadow_cnt in shadow_contours:
-                            x, y, w, h = cv2.boundingRect(shadow_cnt)
-                            src = lbp_result[y:y+h,x:x+w]
-                            src2 = sub_result[y:y+h,x:x+w]
-                            for i in range(0,3):
-                                px = random.randrange(0,w,10)
-                                py = random.randrange(0,h,10)
-                                mode = feature.calMode(src,px,py)
-                                mode2 = feature.calMode(src2,px,py)
-                                if not mode is None and not mode2 is None :
-                                    # axmode.scatter(mode[0], mode[1], mode[2], c="b", cmap='Reds', marker="s")
-                                    sample["shadow"].append([mode[0], mode[1], mode[2], mode2[0], mode2[1], mode2[2]])
-                        for obj_cnt in obj_contours:
-                            x, y, w, h = cv2.boundingRect(obj_cnt)
-                            src = lbp_result[y:y+h,x:x+w]
-                            src2 = sub_result[y:y+h,x:x+w]
-                            for i in range(0, 3):
-                                px = random.randrange(0,w,10)
-                                py = random.randrange(0,h,10)
-                                mode = feature.calMode(src,px,py)
-                                mode2 = feature.calMode(src2,px,py)
-                                if not mode is None and not mode2 is None :
-                                    # axmode.scatter(mode[0], mode[1], mode[2], c="c", cmap='Reds', marker="o")
-                                    sample["object"].append([mode[0], mode[1], mode[2], mode2[0], mode2[1], mode2[2]])
-                        # axmode.legend()
-                        # plt.show()
-                        stop = False
-                        return True
             return True
+#---------------------------------------------------------------------------------------------
     try:
         while(ret):
             ret, frame = cap.read()
@@ -254,82 +202,50 @@ if __name__ =='__main__':
 
                 fg_mask = fg.getForeground(frame)
                 # print( len(feature.lbpFeature(frame)))
-                sub_result,lbp_result = feature.lbpFeature(frame)
-
-                # _, sub_threshold = cv2.threshold(sub_result,220,255,cv2.THRESH_BINARY)
-                # print(sub_result.shape, sub_threshold.shape)
-                 
-
-            draw[sub_result >250] = 255
-            if fc % 180 == 0:
-                feature.updateLbpBackgroun(fg.getBackground())
-                fc =0 
-        
             end_time=time.time()
-            
-            # print(1/(end_time-start_time))
-            # lbp_result[fg_mask == 0] = 0
-            # sub_result[fg_mask == 0] = 0
-            lbp_result = cv2.cvtColor(lbp_result, cv2.COLOR_GRAY2BGR)
-            sub_result = cv2.cvtColor(sub_result, cv2.COLOR_GRAY2BGR) 
-
-            cv2.putText(lbp_result, "lbp_result", (5, 20), cv2.FONT_HERSHEY_SIMPLEX,1, (0, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(sub_result, "sub_result", (5, 20), cv2.FONT_HERSHEY_SIMPLEX,1, (0, 255, 255), 2, cv2.LINE_AA)
-            # draw[0:270,480:960] = lbp_result
-            # draw[270:540,0:480] = sub_result
-            # draw[0:270,0:480]   = frame
-
             # out.write(draw)
             fg_contours  = cv2.findContours(fg_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)[-2]
 
+
+            draw = np.zeros_like(fg_mask)
             # regTest(fg_contours, fg_mask, frame, feature)
 
             for cnt in fg_contours:
                 contour_size = cv2.contourArea(cnt)
-                if contour_size >1000:
+                if contour_size >50000:
                     continue
 
-                if contour_size >700:
+                if contour_size >400:
+                    knn = KnnRemove()                    
                     x, y, w, h = cv2.boundingRect(cnt)
-                    cv2.imshow("before", fg_mask[y:h+y, x:x+w])
-                    cv2.imshow("frame" , frame[y:h+y, x:x+w])
-                    after = np.zeros_like(fg_mask[y:h+y, x:x+w])
-                    print("contour0")
-                    for x in range(after.shape[0]):
-                        for y in range(after.shape[1]):
-
-                            mode = feature.calMode(sub_result[y:h+y, x:x+w],x, y)
-                            mode2 = feature.calMode(lbp_result[y:h+y, x:x+w],x, y)
-
-                            if not mode2 is None and not mode is None:
-                                res = classfier.knn_model.predict([[mode[0], mode[1], mode[2], mode2[0], mode2[1], mode2[2]]])
-                            
-                                if res[0]:
-                                    after[x,y] = 0
-                                else:
-                                    after[x,y] = 255
-
-                    print("contour1")
-                    cv2.imshow("after", after)
-                    cv2.waitKey(0)
-                    cv2.destroyAllWindows()
-            try:
-                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-                # draw = cv2.morphologyEx(cv2.bitwise_and(sub_threshold,fg_mask ), cv2.MORPH_CLOSE, kernel)
-                draw = cv2.dilate(draw, kernel, iterations = 1)
-                cv2.imshow('draw',draw)
-            except:
-                pass
+                    img = frame[y:h+y, x:x+w]
+                    # mask = np.zeros((img.shape[0],img.shape[1]))
+                    mask = fg_mask[y:h+y, x:x+w]
+                    cv2.drawContours(mask, cnt, -1, 255, 3)
+                    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                    object_mask = cv2.erode(mask, kernel, iterations = 1)
+                    shadow_mask = cv2.dilate(mask, kernel, iterations = 1)
+                    knn.setObject(img[object_mask == 255])
+                    knn.setShadow(img[shadow_mask == 0])
+                    knn.train()
+                    result = knn.predict(img)
+                    result = cv2.dilate(result, kernel, iterations = 1)
+                    draw[y:h+y, x:x+w] = result
+            
+            cv2.imshow('draw',draw)
+            # try:
+            #     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            #     # draw = cv2.morphologyEx(cv2.bitwise_and(sub_threshold,fg_mask ), cv2.MORPH_CLOSE, kernel)
+            # except:
+            #     pass
             
             if developer:
                 cv2.imshow('frame', frame)
                 # cv2.imshow('sub_threshold', sub_threshold)
                 cv2.imshow('fg_mask', fg_mask)
-                cv2.imshow('lbp_result', lbp_result)
-                cv2.imshow('sub_result', sub_result)
                 if not keyboardTool():
                     break
-            print(round((fc1/frame_count)*100))
+            # print(round((fc1/frame_count)*100))
             fc += 1
             fc1 += 1
     except Exception as e:
