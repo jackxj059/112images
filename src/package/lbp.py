@@ -1,15 +1,16 @@
 import cv2
 import numpy as np
 from skimage.feature import local_binary_pattern
+from collections import Counter
 class LBP():
-    def __init__(self, radius =1, n_points =8 ):
+    def __init__(self, radius=1, n_points=8, winSize=10 ):
         self.sample = None
         self.describe = None         
         self.block =None
         self.radius = radius 
         self.lbp = None
         self.n_points = n_points
-
+        self.winSize= winSize
     def setLBPImageScikit(self, image):
         if image.shape[-1] == 3:
             gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -56,6 +57,9 @@ class LBP():
         else:
             result = select_std/sample_std
         return result
+    
+
+
 
 if __name__ == '__main__':
     lbp = LBP()
