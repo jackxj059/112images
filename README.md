@@ -18,7 +18,7 @@
 ### For Morphology
 - 切換分支
 
-  `git checkout main`
+  `git checkout master`
 
 - 進入src資料夾
 
