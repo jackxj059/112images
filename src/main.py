@@ -14,51 +14,57 @@ class Foreground:
         self.background = None
 
         if mode == 1:
-
             self.backSub = cv2.createBackgroundSubtractorMOG2(detectShadows = False)
         elif mode == 2:
-
             self.backSub = cv2.createBackgroundSubtractorKNN(detectShadows = False)
             # print(self.backSub.getShadowValue())
         elif mode == 3:
             self.backSub = cv2.bgsegm.createBackgroundSubtractorMOG()
-
     def getForeground(self, frame):
         _fg_mask = self.backSub.apply(frame)
         self.background = self.backSub.getBackgroundImage()
-
         _kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         _fg_mask = cv2.morphologyEx(_fg_mask, cv2.MORPH_OPEN, _kernel)
-
         return _fg_mask
 
     def getBackground(self):
         return self.background
-
 class KnnRemove:
     def __init__(self):
         self.object = None
         self.shadow = None
         self.model  = None
     def setObject(self, object):
-        self.object = object
+        self.object = object #紀錄物件特徵
     def setShadow(self, shadow):
-        self.shadow = shadow
+        self.shadow = shadow #紀錄陰影特徵
+
+    def sampling(self, img, fg_mask):
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        object_mask = cv2.erode(fg_mask, kernel, iterations = 1) #進行侵蝕找到只屬於物件的區域
+        shadow_mask = cv2.dilate(fg_mask, kernel, iterations = 1)#進行膨脹找到只屬於陰影的區域
+        self.setObject(img[object_mask == 255])
+        self.setShadow(img[shadow_mask == 0])
+        # cv2.imshow('obj' ,cv2.bitwise_and(img, img, mask=object_mask))
+        # cv2.imshow('shw' ,cv2.bitwise_and(img, img, mask=~shadow_mask))
+        # cv2.imshow('obj2' ,object_mask)
+        # cv2.imshow('shw2' ,shadow_mask)
+
     def train(self):
         self.model = KNeighborsClassifier()
         derc = self.object.tolist()
         derc.extend(self.shadow.tolist())
         label = [0]*len(self.object)
         label.extend([1]*len(self.shadow))
-        self.model.fit(derc, label)
-
+        self.model.fit(derc, label) # 訓練knn 模型
+    
     def predict(self, img):
         result = np.zeros((img.shape[0],img.shape[1]), dtype=np.uint8)
         height, width = result.shape
         for y in range(height):
             for x in range(width):
                 b, g, r = img[y, x]
-                if self.model.predict([[b, g, r]]) == 0:
+                if self.model.predict([[b, g, r]]) == 0:#針對每個pixel進行預測
                     result[y, x] = 255
                 else:
                     result[y, x] = 0
@@ -155,13 +161,13 @@ if __name__ =='__main__':
     # classfier = Classfier()
     # path ="video/2023-06-03_12-58.mp4" 
     sample={"object":[],"shadow":[]}
-    path ="video/441k901_2022-05-24_23-00" 
+    path ="video/rain" 
     cap = cv2.VideoCapture(path+".mp4")
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     # print(frame_count)
     feature = Feature()
     # background = Foreground()
-    fg = Foreground(mode=2)
+    fg = Foreground(mode=1)
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     out = cv2.VideoWriter(path+'-output.mp4', cv2.VideoWriter_fourcc(*"mp4v"), 30, (480,270))
     bg = fg.getBackground()
@@ -209,29 +215,28 @@ if __name__ =='__main__':
 
             draw = np.zeros_like(fg_mask)
             # regTest(fg_contours, fg_mask, frame, feature)
-
+            
+            index = 0
             for cnt in fg_contours:
                 contour_size = cv2.contourArea(cnt)
-                if contour_size >50000:
+                if contour_size >3000:
                     continue
 
-                if contour_size >400:
+                if contour_size >1000:
                     knn = KnnRemove()                    
                     x, y, w, h = cv2.boundingRect(cnt)
                     img = frame[y:h+y, x:x+w]
                     # mask = np.zeros((img.shape[0],img.shape[1]))
                     mask = fg_mask[y:h+y, x:x+w]
                     cv2.drawContours(mask, cnt, -1, 255, 3)
-                    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-                    object_mask = cv2.erode(mask, kernel, iterations = 1)
-                    shadow_mask = cv2.dilate(mask, kernel, iterations = 1)
-                    knn.setObject(img[object_mask == 255])
-                    knn.setShadow(img[shadow_mask == 0])
+                    cv2.imshow("img" ,img )
+                    cv2.imshow('mask' ,mask)
+
+                    knn.sampling(img, mask)
                     knn.train()
                     result = knn.predict(img)
-                    result = cv2.dilate(result, kernel, iterations = 1)
                     draw[y:h+y, x:x+w] = result
-            
+                index += 1
             cv2.imshow('draw',draw)
             # try:
             #     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
@@ -240,8 +245,9 @@ if __name__ =='__main__':
             #     pass
             
             if developer:
-                cv2.imshow('frame', frame)
-                # cv2.imshow('sub_threshold', sub_threshold)
+                # cv2.imshow('frame',cv2.bitwise_and(frame, frame, mask=fg_mask))
+                cv2.imshow('frame',frame)
+                # cv2.imshow('sub_thrshold', sub_threshold)
                 cv2.imshow('fg_mask', fg_mask)
                 if not keyboardTool():
                     break
