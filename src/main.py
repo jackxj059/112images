@@ -49,6 +49,14 @@ class KnnRemove:
         label = [0]*len(self.object)
         label.extend([1]*len(self.shadow))
         self.model.fit(derc, label)
+    def sampling(self, img):
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        dst = cv2.cornerHarris(gray, blockSize=3, ksize=3, k=0.04)
+        harris_mask = np.zeros_like(mask, dtype=np.uint8) 
+        harris_mask[dst > 0.01 * dst.max()] = 255
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        harris_mask = cv2.dilate(harris_mask, kernel, iterations=2)   
+        knn.setObject(img[harris_mask==255])
 
     def predict(self, img):
         result = np.zeros((img.shape[0],img.shape[1]), dtype=np.uint8)
@@ -60,7 +68,7 @@ class KnnRemove:
                     result[y, x] = 255
                 else:
                     result[y, x] = 0
-        result = cv2.morphologyEx(result, cv2.MORPH_OPEN, kernel)  
+        # result = cv2.morphologyEx(result, cv2.MORPH_OPEN, kernel)  
         return result
 
 class Classfier:
@@ -287,13 +295,7 @@ if __name__ =='__main__':
                     x, y, w, h = cv2.boundingRect(cnt)
                     img = frame[y:h+y, x:x+w]
                     mask = fg_mask[y:h+y, x:x+w]
-                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                    dst = cv2.cornerHarris(gray, blockSize=3, ksize=3, k=0.04)
-                    harris_mask = np.zeros_like(mask, dtype=np.uint8) 
-                    harris_mask[dst > 0.01 * dst.max()] = 255
-                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-                    harris_mask = cv2.dilate(harris_mask, kernel, iterations=2)   
-                    knn.setObject(img[harris_mask==255])
+                    knn.sampling(img)
                     knn.setShadow(shadow_data)
                     knn.train()
                     res = knn.predict(img)
