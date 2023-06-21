@@ -1,14 +1,7 @@
 import sys
-
 import cv2
-import pickle
-import random
-import package
 import numpy as np
-from collections import Counter
-import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsClassifier
-from numba import  jit
 class Foreground:
     def __init__(self, mode):
         self.background = None
@@ -76,7 +69,6 @@ if __name__ =='__main__':
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fg = Foreground(mode=2)
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter(path+'-output.mp4', cv2.VideoWriter_fourcc(*"mp4v"), 30, (480,270))
     bg = fg.getBackground()
     draw = None
     ret = True
@@ -128,9 +120,10 @@ if __name__ =='__main__':
                     knn.train()
                     result = knn.predict(img)
                     draw[y:h+y, x:x+w] = result
-            cv2.imshow('draw',draw)
+
             if developer:
                 cv2.imshow('frame',frame)
+                cv2.imshow('draw',draw)
                 cv2.imshow('fg_mask', fg_mask)
                 if not keyboardTool():
                     break
@@ -138,6 +131,5 @@ if __name__ =='__main__':
             fc1 += 1
     except Exception as e:
         cap.release()
-        out.release()
         print(e)
         print("end")
